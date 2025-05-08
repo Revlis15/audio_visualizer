@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>3D Audio Reactive Sphere</title>
+    <link rel="stylesheet" href="css/styles.css" />
+  </head>
+  <body>
+    <div id="controls">
+      <div class="control-group">
+        <button class="button" id="micToggle">Start Microphone & Speech</button>
+        <div id="micStatus" class="status-indicator">
+          Microphone & Speech: Off
+        </div>
+        <div id="speechBox" class="speech-box">
+          <div id="speechText">No speech detected</div>
+        </div>
+      </div>
+      <div class="control-group" id="fileControls">
+        <input type="file" id="fileInput" accept="audio/*" />
+        <button
+          class="button"
+          onclick="document.getElementById('fileInput').click()"
+        >
+          Import Audio
+        </button>
+        <button class="button" id="playButton" disabled>Play</button>
+        <button class="button" id="pauseButton" disabled>Pause</button>
+        <div class="time-display">
+          <span id="currentTime">0:00</span> / <span id="totalTime">0:00</span>
+        </div>
+      </div>
+      <div class="control-group">
+        <label for="displacementRange">Displacement Range:</label>
+        <input
+          type="range"
+          id="displacementRange"
+          min="0"
+          max="3"
+          step="0.1"
+          value="1"
+        />
+        <span id="displacementValue">1.0</span>
+      </div>
+      <div class="control-group">
+        <label for="sphereSize">Sphere Size:</label>
+        <input
+          type="range"
+          id="sphereSize"
+          min="1"
+          max="10"
+          step="0.1"
+          value="5"
+        />
+        <span id="sphereSizeValue">5.0</span>
+      </div>
+      <div class="control-group">
+        <label for="pointCount">Number of Points:</label>
+        <input
+          type="range"
+          id="pointCount"
+          min="1000"
+          max="50000"
+          step="1000"
+          value="40000"
+        />
+        <span id="pointCountValue">40,000</span>
+      </div>
+      <div class="control-group">
+        <label for="ringCount">Number of Rings:</label>
+        <input
+          type="range"
+          id="ringCount"
+          min="0"
+          max="100"
+          step="1"
+          value="8"
+        />
+        <span id="ringCountValue">8</span>
+      </div>
+      <div class="control-group">
+        <label for="sphereColor">Sphere Color:</label>
+        <input type="color" id="sphereColor" value="#ffffff" />
+      </div>
+      <div id="status">No audio source selected</div>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="js/audioVisualizer.js"></script>
+  </body>
+</html>
