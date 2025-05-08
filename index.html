@@ -63,9 +63,9 @@
           min="1000"
           max="50000"
           step="1000"
-          value="40000"
+          value="20000"
         />
-        <span id="pointCountValue">40,000</span>
+        <span id="pointCountValue">20,000</span>
       </div>
       <div class="control-group">
         <label for="ringCount">Number of Rings:</label>
@@ -75,13 +75,43 @@
           min="0"
           max="100"
           step="1"
-          value="8"
+          value="30"
         />
-        <span id="ringCountValue">8</span>
+        <span id="ringCountValue">30</span>
       </div>
       <div class="control-group">
         <label for="sphereColor">Sphere Color:</label>
         <input type="color" id="sphereColor" value="#ffffff" />
+      </div>
+      <div class="control-group">
+        <label for="pointBrightness">Point Brightness:</label>
+        <input
+          type="range"
+          id="pointBrightness"
+          min="0.1"
+          max="3"
+          step="0.1"
+          value="1"
+        />
+        <span id="pointBrightnessValue">1.0</span>
+      </div>
+      <div class="control-group">
+        <label for="edgeBrightness">Edge Brightness:</label>
+        <input
+          type="range"
+          id="edgeBrightness"
+          min="1"
+          max="3"
+          step="0.1"
+          value="1.5"
+        />
+        <span id="edgeBrightnessValue">1.5</span>
+      </div>
+      <div class="control-group">
+        <label for="edgeEffect">
+          <input type="checkbox" id="edgeEffect" checked />
+          Edge Effect
+        </label>
       </div>
       <div id="status">No audio source selected</div>
     </div>

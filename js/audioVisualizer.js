@@ -11,6 +11,20 @@ class AudioVisualizer {
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     document.body.appendChild(this.renderer.domElement);
 
+    // Animation properties
+    this.animationProgress = 0;
+    this.animationDuration = 5;
+    this.isAnimating = true;
+    this.animationStartTime = Date.now();
+    this.startPositions = [];
+    this.ringsAnimationProgress = 0;
+    this.isRingsAnimating = false;
+    this.ringsAnimationStartTime = null;
+
+    // Get initial ring count from slider
+    const ringCountSlider = document.getElementById("ringCount");
+    this.initialRingCount = parseInt(ringCountSlider.value);
+
     // Audio setup
     this.audioContext = new (window.AudioContext ||
       window.webkitAudioContext)();
@@ -44,8 +58,14 @@ class AudioVisualizer {
     this.time = 0;
     this.sphereRadius = 5.0;
     this.sphereColor = 0xffffff; // Default color (white)
-    this.numPoints = 40000; // Default number of points
+    this.numPoints = 20000; // Default number of points
     this.orbitingCircles = []; // Array to store orbiting circles
+
+    // Add new properties for point brightness control
+    this.pointSize = 0.15;
+    this.pointBrightness = 1.0;
+    this.edgeBrightness = 2.0;
+    this.useEdgeEffect = true;
 
     // Create initial sphere
     this.createSphere();
@@ -73,6 +93,7 @@ class AudioVisualizer {
     this.setupPointCountControl();
     this.setupRingCountControl();
     this.createOrbitingCircles();
+    this.setupPointBrightnessControl();
 
     // Start animation
     this.animate();
@@ -342,25 +363,77 @@ class AudioVisualizer {
   createSphere() {
     // Create points using Fibonacci Sphere Sampling
     const points = this.generateFibonacciSphere(this.numPoints);
+    const finalPositions = new Float32Array(points);
+
+    // Create initial random positions around the screen
+    this.startPositions = new Float32Array(points.length);
+    const spread = 100;
+
+    for (let i = 0; i < points.length; i += 3) {
+      this.startPositions[i] = (Math.random() - 0.5) * spread;
+      this.startPositions[i + 1] = (Math.random() - 0.5) * spread;
+      this.startPositions[i + 2] = (Math.random() - 0.5) * spread;
+    }
 
     // Create geometry from points
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute(
       "position",
-      new THREE.Float32BufferAttribute(points, 3)
+      new THREE.Float32BufferAttribute(this.startPositions, 3)
     );
 
-    // Store original positions for animation
-    this.originalPositions = new Float32Array(points);
+    // Store final positions for animation
+    this.originalPositions = finalPositions;
 
-    // Basic material with current color
-    const material = new THREE.PointsMaterial({
-      color: this.sphereColor,
-      size: 0.05,
+    // Create custom shader material for better point control
+    const material = new THREE.ShaderMaterial({
+      uniforms: {
+        color: { value: new THREE.Color(this.sphereColor) },
+        pointSize: { value: this.pointSize },
+        brightness: { value: this.pointBrightness },
+        edgeBrightness: { value: this.edgeBrightness },
+        useEdgeEffect: { value: this.useEdgeEffect ? 1.0 : 0.0 },
+      },
+      vertexShader: `
+        uniform float pointSize;
+        uniform float brightness;
+        uniform float edgeBrightness;
+        uniform float useEdgeEffect;
+        
+        varying float vDistance;
+        
+        void main() {
+          vDistance = length(position);
+          vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+          gl_PointSize = pointSize * (300.0 / -mvPosition.z);
+          gl_Position = projectionMatrix * mvPosition;
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 color;
+        uniform float brightness;
+        uniform float edgeBrightness;
+        uniform float useEdgeEffect;
+        
+        varying float vDistance;
+        
+        void main() {
+          float dist = length(gl_PointCoord - vec2(0.5));
+          if (dist > 0.5) discard;
+          
+          float edgeFactor = 1.0;
+          if (useEdgeEffect > 0.5) {
+            float edgeIntensity = 1.0 - smoothstep(0.0, 0.5, dist);
+            edgeFactor = 1.0 + (edgeBrightness - 1.0) * pow(edgeIntensity, 0.5);
+          }
+          
+          float finalBrightness = brightness * edgeFactor;
+          gl_FragColor = vec4(color * finalBrightness, 1.0);
+        }
+      `,
       transparent: true,
-      opacity: 0.8,
       blending: THREE.AdditiveBlending,
-      sizeAttenuation: true,
+      depthWrite: false,
     });
 
     // Create point cloud
@@ -442,7 +515,92 @@ class AudioVisualizer {
 
   animate() {
     requestAnimationFrame(() => this.animate());
-    this.updateSphere();
+
+    // Handle initial sphere animation
+    if (this.isAnimating) {
+      const currentTime = Date.now();
+      const elapsedTime = (currentTime - this.animationStartTime) / 1000;
+      this.animationProgress = Math.min(
+        elapsedTime / this.animationDuration,
+        1
+      );
+
+      if (this.pointCloud) {
+        const positions = this.pointCloud.geometry.attributes.position.array;
+
+        // Animate each point from its start position to its final position
+        for (let i = 0; i < positions.length; i += 3) {
+          const t = 1 - Math.pow(1 - this.animationProgress, 2);
+
+          positions[i] =
+            this.startPositions[i] +
+            (this.originalPositions[i] - this.startPositions[i]) * t;
+          positions[i + 1] =
+            this.startPositions[i + 1] +
+            (this.originalPositions[i + 1] - this.startPositions[i + 1]) * t;
+          positions[i + 2] =
+            this.startPositions[i + 2] +
+            (this.originalPositions[i + 2] - this.startPositions[i + 2]) * t;
+        }
+
+        this.pointCloud.geometry.attributes.position.needsUpdate = true;
+
+        // Animate opacity with a delay
+        if (this.pointCloud.material) {
+          const opacityProgress = Math.max(
+            0,
+            (this.animationProgress - 0.2) / 0.8
+          );
+          this.pointCloud.material.opacity = opacityProgress * 0.8;
+        }
+
+        // Add some rotation during animation
+        this.pointCloud.rotation.y = this.animationProgress * Math.PI * 2;
+      }
+
+      if (this.animationProgress >= 1) {
+        this.isAnimating = false;
+        this.isRingsAnimating = true;
+        this.ringsAnimationStartTime = Date.now();
+
+        // Start ring animations
+        this.orbitingCircles.forEach((circle) => {
+          circle.userData.isAnimating = true;
+          circle.userData.animationStartTime = Date.now();
+        });
+      }
+    } else {
+      this.updateSphere();
+    }
+
+    // Handle rings animation
+    if (this.isRingsAnimating) {
+      const currentTime = Date.now();
+      const elapsedTime = (currentTime - this.ringsAnimationStartTime) / 1000;
+      this.ringsAnimationProgress = Math.min(elapsedTime / 2, 1); // 2 seconds for rings animation
+
+      this.orbitingCircles.forEach((circle, index) => {
+        // Stagger the animation of each ring
+        const ringProgress = Math.max(
+          0,
+          (this.ringsAnimationProgress - index * 0.02) / 0.8
+        );
+
+        // Scale up
+        const scale = ringProgress;
+        circle.scale.set(scale, scale, scale);
+
+        // Fade in
+        if (circle.material) {
+          circle.material.opacity = ringProgress * 0.3;
+        }
+      });
+
+      if (this.ringsAnimationProgress >= 1) {
+        this.isRingsAnimating = false;
+      }
+    }
+
     this.updateOrbitingCircles();
     this.updateTimeDisplay();
     this.renderer.render(this.scene, this.camera);
@@ -484,6 +642,29 @@ class AudioVisualizer {
   setSphereSize(radius) {
     this.sphereRadius = radius;
 
+    // Store current states before recreating
+    const currentPositions = this.pointCloud
+      ? this.pointCloud.geometry.attributes.position.array.slice()
+      : null;
+    const currentOpacity = this.pointCloud
+      ? this.pointCloud.material.opacity
+      : 0;
+    const currentColor = this.pointCloud
+      ? this.pointCloud.material.color.getHex()
+      : this.sphereColor;
+
+    // Store ring states
+    const ringStates = this.orbitingCircles.map((circle) => ({
+      opacity: circle.material.opacity,
+      scale: circle.scale.x,
+      rotation: {
+        x: circle.rotation.x,
+        y: circle.rotation.y,
+        z: circle.rotation.z,
+      },
+      userData: { ...circle.userData },
+    }));
+
     // Remove old point cloud
     if (this.pointCloud) {
       this.scene.remove(this.pointCloud);
@@ -494,19 +675,57 @@ class AudioVisualizer {
     // Create new sphere with updated size
     this.createSphere();
 
-    // Update all orbiting circles with the new radius
-    this.orbitingCircles.forEach((circle) => {
+    // Restore sphere states if we were already animated
+    if (currentPositions && !this.isAnimating) {
+      const newPositions = this.pointCloud.geometry.attributes.position.array;
+      const copyLength = Math.min(currentPositions.length, newPositions.length);
+
+      for (let i = 0; i < copyLength; i++) {
+        newPositions[i] = currentPositions[i];
+      }
+
+      this.pointCloud.geometry.attributes.position.needsUpdate = true;
+      this.pointCloud.material.opacity = currentOpacity;
+      this.pointCloud.material.color.setHex(currentColor);
+    }
+
+    // Update existing rings instead of recreating them
+    this.orbitingCircles.forEach((circle, index) => {
       if (circle.geometry) {
-        // Remove old circle
-        this.scene.remove(circle);
+        // Store current state
+        const currentOpacity = circle.material.opacity;
+        const currentScale = circle.scale.x;
+        const currentRotation = {
+          x: circle.rotation.x,
+          y: circle.rotation.y,
+          z: circle.rotation.z,
+        };
+        const config = circle.userData;
+
+        // Remove old geometry
         circle.geometry.dispose();
-        circle.material.dispose();
+
+        // Create new geometry with updated radius
+        const newGeometry = new THREE.TorusGeometry(
+          this.sphereRadius + config.radiusOffset,
+          config.tubeWidth,
+          8,
+          100
+        );
+
+        // Update the circle with new geometry
+        circle.geometry = newGeometry;
+
+        // Restore state
+        circle.material.opacity = currentOpacity;
+        circle.scale.set(currentScale, currentScale, currentScale);
+        circle.rotation.set(
+          currentRotation.x,
+          currentRotation.y,
+          currentRotation.z
+        );
       }
     });
-
-    // Clear the array and recreate circles
-    this.orbitingCircles = [];
-    this.createOrbitingCircles();
   }
 
   setupColorControl() {
@@ -520,11 +739,9 @@ class AudioVisualizer {
 
   setSphereColor(color) {
     this.sphereColor = new THREE.Color(color).getHex();
-
     if (this.pointCloud && this.pointCloud.material) {
-      this.pointCloud.material.color.setHex(this.sphereColor);
+      this.pointCloud.material.uniforms.color.value.setHex(this.sphereColor);
     }
-
     // Update all orbiting circles with the new color
     this.orbitingCircles.forEach((circle) => {
       if (circle.material) {
@@ -548,6 +765,17 @@ class AudioVisualizer {
   setPointCount(count) {
     this.numPoints = count;
 
+    // Store current states before recreating
+    const currentPositions = this.pointCloud
+      ? this.pointCloud.geometry.attributes.position.array.slice()
+      : null;
+    const currentOpacity = this.pointCloud
+      ? this.pointCloud.material.opacity
+      : 0;
+    const currentColor = this.pointCloud
+      ? this.pointCloud.material.color.getHex()
+      : this.sphereColor;
+
     // Remove old point cloud
     if (this.pointCloud) {
       this.scene.remove(this.pointCloud);
@@ -557,6 +785,22 @@ class AudioVisualizer {
 
     // Create new sphere with updated point count
     this.createSphere();
+
+    // Restore states if we were already animated
+    if (currentPositions && !this.isAnimating) {
+      // Only copy positions if the new sphere has enough space
+      const newPositions = this.pointCloud.geometry.attributes.position.array;
+      const copyLength = Math.min(currentPositions.length, newPositions.length);
+
+      // Copy positions safely
+      for (let i = 0; i < copyLength; i++) {
+        newPositions[i] = currentPositions[i];
+      }
+
+      this.pointCloud.geometry.attributes.position.needsUpdate = true;
+      this.pointCloud.material.opacity = currentOpacity;
+      this.pointCloud.material.color.setHex(currentColor);
+    }
   }
 
   setupRingCountControl() {
@@ -565,85 +809,114 @@ class AudioVisualizer {
 
     slider.addEventListener("input", (e) => {
       const value = parseInt(e.target.value);
-      this.setRingCount(value);
-      valueDisplay.textContent = value;
+      // Only allow ring count changes after initial animation
+      if (!this.isAnimating) {
+        this.setRingCount(value);
+        valueDisplay.textContent = value;
+      }
     });
   }
 
-  setRingCount(count) {
-    // Remove existing rings
-    this.orbitingCircles.forEach((circle) => {
-      this.scene.remove(circle);
-      circle.geometry.dispose();
-      circle.material.dispose();
-    });
-    this.orbitingCircles = [];
+  setRingCount(count, isInitialCreation = false) {
+    const currentCount = this.orbitingCircles.length;
 
-    // Generate random configurations for each ring
-    const circleConfigs = [];
-    for (let i = 0; i < count; i++) {
-      // Generate random properties
-      const rotationSpeed =
-        (Math.random() * 0.03 - 0.015) * (Math.random() > 0.5 ? 1 : -1); // Random between -0.015 and 0.015
-      const tilt = Math.random() * Math.PI * 2; // Random angle between 0 and 2π
-      const axisChangeSpeed = Math.random() * 0.02; // Random between 0 and 0.02
-      const radiusOffset = -1 + (Math.random() * 0.4 - 0.2); // Random offset between -1.2 and -0.8
-      const tubeWidth = 0.03 + Math.random() * 0.04; // Random width between 0.03 and 0.07
-
-      circleConfigs.push({
-        rotationSpeed,
-        tilt,
-        axisChangeSpeed,
-        radiusOffset,
-        tubeWidth,
-      });
+    if (count === currentCount) {
+      return; // No change needed
     }
 
-    // Create the rings
-    circleConfigs.forEach((config) => {
-      const geometry = new THREE.TorusGeometry(
-        this.sphereRadius + config.radiusOffset,
-        config.tubeWidth,
-        8,
-        100
-      );
-      const material = new THREE.MeshPhongMaterial({
-        color: this.sphereColor,
-        transparent: true,
-        opacity: 0.3,
-        shininess: 50,
-        emissive: this.sphereColor,
-        emissiveIntensity: 0.3,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-      });
+    if (count < currentCount) {
+      // Remove excess rings
+      for (let i = currentCount - 1; i >= count; i--) {
+        const circle = this.orbitingCircles[i];
+        this.scene.remove(circle);
+        circle.geometry.dispose();
+        circle.material.dispose();
+        this.orbitingCircles.pop();
+      }
+    } else {
+      // Add new rings
+      for (let i = currentCount; i < count; i++) {
+        const rotationSpeed =
+          (Math.random() * 0.03 - 0.015) * (Math.random() > 0.5 ? 1 : -1);
+        const tilt = Math.random() * Math.PI * 2;
+        const axisChangeSpeed = Math.random() * 0.02;
+        const radiusOffset = -1 + (Math.random() * 0.4 - 0.2);
+        const tubeWidth = 0.03 + Math.random() * 0.04;
 
-      const circle = new THREE.Mesh(geometry, material);
+        const geometry = new THREE.TorusGeometry(
+          this.sphereRadius + radiusOffset,
+          tubeWidth,
+          8,
+          100
+        );
 
-      circle.rotation.x = Math.PI / 2;
-      circle.rotation.z = config.tilt;
+        const material = new THREE.MeshPhongMaterial({
+          color: this.sphereColor,
+          transparent: true,
+          opacity: 0,
+          shininess: 50,
+          emissive: this.sphereColor,
+          emissiveIntensity: 0.3,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+        });
 
-      circle.userData = {
-        rotationSpeed: config.rotationSpeed,
-        tilt: config.tilt,
-        axisChangeSpeed: config.axisChangeSpeed,
-        time: Math.random() * 100, // Random starting time for more varied initial positions
-        radiusOffset: config.radiusOffset,
-        tubeWidth: config.tubeWidth,
-      };
+        const circle = new THREE.Mesh(geometry, material);
 
-      this.orbitingCircles.push(circle);
-      this.scene.add(circle);
-    });
+        // Always start with 0 scale
+        circle.scale.set(0, 0, 0);
+
+        // Set initial rotation
+        circle.rotation.x = Math.PI / 2;
+        circle.rotation.z = tilt;
+
+        circle.userData = {
+          rotationSpeed,
+          tilt,
+          axisChangeSpeed,
+          time: Math.random() * 100,
+          radiusOffset,
+          tubeWidth,
+          isAnimating: !isInitialCreation,
+          animationStartTime: isInitialCreation ? null : Date.now(),
+        };
+
+        this.orbitingCircles.push(circle);
+        this.scene.add(circle);
+      }
+    }
   }
 
   createOrbitingCircles() {
-    // Initialize with default number of rings (8)
-    this.setRingCount(8);
+    // Initialize with the current ring count from the slider
+    const ringCountSlider = document.getElementById("ringCount");
+    const currentRingCount = parseInt(ringCountSlider.value);
+    this.setRingCount(currentRingCount, true); // Pass true to indicate initial creation
   }
 
   updateOrbitingCircles() {
     this.orbitingCircles.forEach((circle) => {
+      // Handle ring animation
+      if (circle.userData.isAnimating && circle.userData.animationStartTime) {
+        const elapsed =
+          (Date.now() - circle.userData.animationStartTime) / 1000;
+        const progress = Math.min(elapsed / 0.5, 1); // 0.5 second animation
+
+        if (progress < 1) {
+          // Scale up
+          const scale = progress;
+          circle.scale.set(scale, scale, scale);
+
+          // Fade in
+          circle.material.opacity = progress * 0.3;
+        } else {
+          // Animation complete
+          circle.scale.set(1, 1, 1);
+          circle.material.opacity = 0.3;
+          circle.userData.isAnimating = false;
+        }
+      }
+
       // Update time for continuous axis changes
       circle.userData.time += circle.userData.axisChangeSpeed;
 
@@ -717,9 +990,89 @@ class AudioVisualizer {
       }
     });
   }
+
+  setupPointBrightnessControl() {
+    const brightnessSlider = document.getElementById("pointBrightness");
+    const edgeBrightnessSlider = document.getElementById("edgeBrightness");
+    const edgeEffectToggle = document.getElementById("edgeEffect");
+
+    // Set initial values
+    brightnessSlider.value = this.pointBrightness;
+    edgeBrightnessSlider.value = this.edgeBrightness;
+    edgeEffectToggle.checked = this.useEdgeEffect;
+    document.getElementById("pointBrightnessValue").textContent =
+      this.pointBrightness.toFixed(1);
+    document.getElementById("edgeBrightnessValue").textContent =
+      this.edgeBrightness.toFixed(1);
+
+    brightnessSlider.addEventListener("input", (e) => {
+      const value = parseFloat(e.target.value);
+      this.setPointBrightness(value);
+      document.getElementById("pointBrightnessValue").textContent =
+        value.toFixed(1);
+    });
+
+    edgeBrightnessSlider.addEventListener("input", (e) => {
+      const value = parseFloat(e.target.value);
+      this.setEdgeBrightness(value);
+      document.getElementById("edgeBrightnessValue").textContent =
+        value.toFixed(1);
+    });
+
+    edgeEffectToggle.addEventListener("change", (e) => {
+      this.setEdgeEffect(e.target.checked);
+    });
+  }
+
+  setPointBrightness(value) {
+    this.pointBrightness = value;
+    if (this.pointCloud && this.pointCloud.material) {
+      this.pointCloud.material.uniforms.brightness.value = value;
+    }
+  }
+
+  setEdgeBrightness(value) {
+    this.edgeBrightness = value;
+    if (this.pointCloud && this.pointCloud.material) {
+      this.pointCloud.material.uniforms.edgeBrightness.value = value;
+    }
+  }
+
+  setEdgeEffect(enabled) {
+    this.useEdgeEffect = enabled;
+    if (this.pointCloud && this.pointCloud.material) {
+      this.pointCloud.material.uniforms.useEdgeEffect.value = enabled
+        ? 1.0
+        : 0.0;
+    }
+  }
 }
 
 // Initialize the visualizer when the page loads
-window.addEventListener("load", () => {
-  new AudioVisualizer();
+window.addEventListener("load", async () => {
+  const visualizer = new AudioVisualizer();
+
+  // Load default audio file
+  try {
+    const response = await fetch(
+      "Cartoon, Jéja - On & On (feat. Daniel Levi) - Electronic Pop - NCS - Copyright Free Music.mp3"
+    );
+    const arrayBuffer = await response.arrayBuffer();
+    visualizer.audioBuffer = await visualizer.audioContext.decodeAudioData(
+      arrayBuffer
+    );
+    visualizer.totalDuration = visualizer.audioBuffer.duration;
+    visualizer.currentPosition = 0;
+    document.getElementById("totalTime").textContent = visualizer.formatTime(
+      visualizer.totalDuration
+    );
+    document.getElementById("currentTime").textContent =
+      visualizer.formatTime(0);
+    document.getElementById("playButton").disabled = false;
+    document.getElementById("status").textContent = "Default audio loaded";
+  } catch (error) {
+    console.error("Error loading default audio file:", error);
+    document.getElementById("status").textContent =
+      "Error loading default audio file";
+  }
 });
