@@ -250,6 +250,41 @@ class AudioVisualizer {
     const replayButton = document.getElementById("replayAnimation");
     replayButton.addEventListener("click", () => this.replayAnimation());
 
+    // Add export settings button
+    const exportButton = document.getElementById("exportSettings");
+    exportButton.addEventListener("click", () => this.exportSettings());
+
+    // Add import settings button
+    const importButton = document.getElementById("importSettings");
+    const settingsFileInput = document.getElementById("settingsFileInput");
+
+    importButton.addEventListener("click", () => {
+      settingsFileInput.click();
+    });
+
+    settingsFileInput.addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          try {
+            const settings = JSON.parse(event.target.result);
+            if (
+              confirm(
+                "Do you want to import these settings? This will override your current settings."
+              )
+            ) {
+              this.importSettings(settings);
+            }
+          } catch (error) {
+            console.error("Error parsing settings file:", error);
+            alert("Error: Invalid settings file format");
+          }
+        };
+        reader.readAsText(file);
+      }
+    });
+
     micToggle.addEventListener("click", async () => {
       if (!this.isUsingMic) {
         try {
@@ -1648,6 +1683,171 @@ class AudioVisualizer {
       circle.material.opacity = 0;
       circle.visible = true;
     });
+  }
+
+  exportSettings() {
+    // Create settings object
+    const settings = {
+      // Animation settings
+      animationDuration: this.animationDuration,
+
+      // Main sphere settings
+      sphereSize: this.sphereRadius,
+      sphereColor: this.sphereColor,
+      displacementRange: this.displacementMultiplier,
+      pointCount: this.numPoints,
+      pointBrightness: this.pointBrightness,
+      edgeBrightness: this.edgeBrightness,
+      edgeEffect: this.useEdgeEffect,
+
+      // Inner sphere settings
+      innerSphereSize: this.innerSphereRadius,
+      innerSphereColor: this.innerSphereColor,
+      innerSphereOpacity: this.innerSphereOpacity,
+      innerSphereBrightness: this.innerSphereBrightness,
+      innerSphereDisplacement: this.innerSphereDisplacement,
+
+      // Rings settings
+      ringCount: this.orbitingCircles.length,
+      ringSpeed: this.ringSpeed,
+      ringTilt: this.ringTilt,
+      ringSize: this.ringSize,
+      ringOffset: this.ringOffset,
+      ringColor: this.ringColor,
+      ringBrightness: this.ringBrightness,
+      ringOpacity: this.ringOpacity,
+    };
+
+    // Convert settings to JSON string
+    const settingsJson = JSON.stringify(settings, null, 2);
+
+    // Show confirmation dialog
+    if (confirm("Do you want to export the current settings to a file?")) {
+      // Create blob and download link
+      const blob = new Blob([settingsJson], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `audio_visualizer_settings_${new Date()
+        .toISOString()
+        .slice(0, 19)
+        .replace(/[:]/g, "-")}.json`;
+
+      // Trigger download
+      document.body.appendChild(a);
+      a.click();
+
+      // Cleanup
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  // Add method to import settings
+  importSettings(settings) {
+    // Animation settings
+    this.setAnimationDuration(settings.animationDuration);
+
+    // Main sphere settings
+    this.setSphereSize(settings.sphereSize);
+    this.setSphereColor(settings.sphereColor);
+    this.setDisplacementRange(settings.displacementRange);
+    this.setPointCount(settings.pointCount);
+    this.setPointBrightness(settings.pointBrightness);
+    this.setEdgeBrightness(settings.edgeBrightness);
+    this.setEdgeEffect(settings.edgeEffect);
+
+    // Inner sphere settings
+    this.setInnerSphereSize(settings.innerSphereSize);
+    this.setInnerSphereColor(settings.innerSphereColor);
+    this.setInnerSphereOpacity(settings.innerSphereOpacity);
+    this.setInnerSphereBrightness(settings.innerSphereBrightness);
+    this.setInnerSphereDisplacement(settings.innerSphereDisplacement);
+
+    // Rings settings
+    this.setRingCount(settings.ringCount);
+    this.setRingSpeed(settings.ringSpeed);
+    this.setRingTilt(settings.ringTilt);
+    this.setRingSize(settings.ringSize);
+    this.setRingOffset(settings.ringOffset);
+    this.setRingColor(settings.ringColor);
+    this.setRingBrightness(settings.ringBrightness);
+    this.setRingOpacity(settings.ringOpacity);
+
+    // Update UI sliders and displays
+    this.updateUIFromSettings(settings);
+  }
+
+  updateUIFromSettings(settings) {
+    // Update animation duration
+    document.getElementById("animationDuration").value =
+      settings.animationDuration;
+    document.getElementById("animationDurationValue").textContent =
+      settings.animationDuration.toFixed(1) + "s";
+
+    // Update main sphere controls
+    document.getElementById("sphereSize").value = settings.sphereSize;
+    document.getElementById("sphereSizeValue").textContent =
+      settings.sphereSize.toFixed(1);
+    document.getElementById("sphereColor").value =
+      "#" + settings.sphereColor.toString(16).padStart(6, "0");
+    document.getElementById("displacementRange").value =
+      settings.displacementRange;
+    document.getElementById("displacementValue").textContent =
+      settings.displacementRange.toFixed(1);
+    document.getElementById("pointCount").value = settings.pointCount;
+    document.getElementById("pointCountValue").textContent =
+      settings.pointCount.toLocaleString();
+    document.getElementById("pointBrightness").value = settings.pointBrightness;
+    document.getElementById("pointBrightnessValue").textContent =
+      settings.pointBrightness.toFixed(1);
+    document.getElementById("edgeBrightness").value = settings.edgeBrightness;
+    document.getElementById("edgeBrightnessValue").textContent =
+      settings.edgeBrightness.toFixed(1);
+    document.getElementById("edgeEffect").checked = settings.edgeEffect;
+
+    // Update inner sphere controls
+    document.getElementById("innerSphereSize").value = settings.innerSphereSize;
+    document.getElementById("innerSphereSizeValue").textContent =
+      settings.innerSphereSize.toFixed(1);
+    document.getElementById("innerSphereColor").value =
+      "#" + settings.innerSphereColor.toString(16).padStart(6, "0");
+    document.getElementById("innerSphereOpacity").value =
+      settings.innerSphereOpacity;
+    document.getElementById("innerSphereOpacityValue").textContent =
+      settings.innerSphereOpacity.toFixed(2);
+    document.getElementById("innerSphereBrightness").value =
+      settings.innerSphereBrightness;
+    document.getElementById("innerSphereBrightnessValue").textContent =
+      settings.innerSphereBrightness.toFixed(1);
+    document.getElementById("innerSphereDisplacement").value =
+      settings.innerSphereDisplacement;
+    document.getElementById("innerSphereDisplacementValue").textContent =
+      settings.innerSphereDisplacement.toFixed(1);
+
+    // Update rings controls
+    document.getElementById("ringCount").value = settings.ringCount;
+    document.getElementById("ringCountValue").textContent = settings.ringCount;
+    document.getElementById("ringSpeed").value = settings.ringSpeed;
+    document.getElementById("ringSpeedValue").textContent =
+      settings.ringSpeed.toFixed(3);
+    document.getElementById("ringTilt").value = settings.ringTilt;
+    document.getElementById("ringTiltValue").textContent =
+      settings.ringTilt + "°";
+    document.getElementById("ringSize").value = settings.ringSize;
+    document.getElementById("ringSizeValue").textContent =
+      settings.ringSize.toFixed(3);
+    document.getElementById("ringOffset").value = settings.ringOffset;
+    document.getElementById("ringOffsetValue").textContent =
+      settings.ringOffset.toFixed(1);
+    document.getElementById("ringColor").value =
+      "#" + settings.ringColor.toString(16).padStart(6, "0");
+    document.getElementById("ringBrightness").value = settings.ringBrightness;
+    document.getElementById("ringBrightnessValue").textContent =
+      settings.ringBrightness.toFixed(1);
+    document.getElementById("ringOpacity").value = settings.ringOpacity;
+    document.getElementById("ringOpacityValue").textContent =
+      settings.ringOpacity.toFixed(2);
   }
 }
 

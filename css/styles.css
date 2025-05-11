@@ -275,3 +275,22 @@ input[type="color"]:hover::-webkit-color-swatch {
   padding-top: 0;
   padding-bottom: 0;
 }
+
+.settings-controls {
+  margin: 20px 0;
+  padding: 15px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+.settings-controls .button {
+  min-width: 120px;
+  background: #2196f3;
+}
+
+.settings-controls .button:hover {
+  background: #1976d2;
+}
